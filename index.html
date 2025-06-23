@@ -88,13 +88,20 @@
         // --- 1. CONFIGURATION AND INITIALIZATION ---
         
         // Use predefined Firebase config and App ID from the environment
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-attendance-app';
+        const firebaseConfig = {
+  apiKey: "AIzaSyBURL-nmWv5IiGg324sUnIeQgXYGo0VKfU",
+  authDomain: "rn-attendance-1.firebaseapp.com",
+  projectId: "rn-attendance-1",
+  storageBucket: "rn-attendance-1.firebasestorage.app",
+  messagingSenderId: "996441307013",
+  appId: "1:996441307013:web:40045ba19a91104bf776ec",
+  measurementId: "G-Z1FXYM0D5T"
+};
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getFirestore(app);
 
         // --- 2. UI ELEMENT REFERENCES ---
         const checkInButton = document.getElementById('check-in-btn');
