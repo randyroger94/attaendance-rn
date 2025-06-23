@@ -88,27 +88,8 @@
         // --- 1. CONFIGURATION AND INITIALIZATION ---
         
         // Use predefined Firebase config and App ID from the environment
-        // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyBQ7Jq_caPrG-8wyHaqceHlMldJxMpNlI0",
-  authDomain: "employee---attendance---rn.firebaseapp.com",
-  projectId: "employee---attendance---rn",
-  storageBucket: "employee---attendance---rn.firebasestorage.app",
-  messagingSenderId: "415334479199",
-  appId: "1:415334479199:web:860a5052929b737c6cf2ea",
-  measurementId: "G-4WZ5YZDG6W"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-attendance-app';
 
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
