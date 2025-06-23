@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Attendance</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Use Inter as the default font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Simple spinner animation */
+        .spinner {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main Application Container -->
+    <div id="app-container" class="w-full max-w-lg bg-white rounded-2xl shadow-xl p-6 md:p-8 space-y-6">
+        
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-slate-800">Employee Attendance</h1>
+            <p class="text-slate-500 mt-1">Check in to record your attendance</p>
+        </div>
+
+        <!-- Real-time Clock and Date -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+            <p id="current-time" class="text-3xl font-bold text-indigo-600">--:--:--</p>
+            <p id="current-date" class="text-slate-600 text-lg">---, --- --, ----</p>
+        </div>
+
+        <!-- User ID Display -->
+        <div class="text-center">
+             <p class="text-xs text-slate-400">Your User ID:</p>
+             <p id="user-id-display" class="text-sm font-mono text-slate-500 bg-slate-100 rounded-md py-1 px-2 inline-block">Initializing...</p>
+        </div>
+
+        <!-- Check-in Button and Status -->
+        <div class="flex flex-col items-center space-y-3">
+            <button id="check-in-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Check In</span>
+            </button>
+            <p id="status-message" class="text-sm text-slate-500 h-5 text-center"></p>
+        </div>
+
+        <!-- Attendance History -->
+        <div>
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-xl font-bold text-slate-700">Attendance History</h2>
+                <button id="export-csv-btn" class="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Export CSV
+                </button>
+            </div>
+            <div id="history-container" class="bg-slate-50 border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
+                 <div id="history-loader" class="flex justify-center items-center p-8">
+                    <div class="spinner w-8 h-8 rounded-full border-4 border-slate-200"></div>
+                </div>
+                <ul id="history-list" class="divide-y divide-slate-200">
+                    <!-- History items will be populated here -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import necessary functions from Firebase SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- 1. CONFIGURATION AND INITIALIZATION ---
+        
+        // Use predefined Firebase config and App ID from the environment
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-attendance-app';
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- 2. UI ELEMENT REFERENCES ---
+        const checkInButton = document.getElementById('check-in-btn');
+        const exportCsvButton = document.getElementById('export-csv-btn');
+        const statusMessage = document.getElementById('status-message');
+        const historyList = document.getElementById('history-list');
+        const historyLoader = document.getElementById('history-loader');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const timeDisplay = document.getElementById('current-time');
+        const dateDisplay = document.getElementById('current-date');
+
+        let currentUserId = null;
+        let authReady = false;
+        let attendanceDataCache = []; // Cache for storing attendance data for CSV export
+
+        // --- 3. AUTHENTICATION ---
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is signed in.
+                currentUserId = user.uid;
+                authReady = true;
+                userIdDisplay.textContent = currentUserId;
+                console.log("User authenticated with UID:", currentUserId);
+                listenForAttendanceChanges();
+            } else {
+                // User is signed out. Handle this case if necessary.
+                console.log("User is not authenticated.");
+                userIdDisplay.textContent = "Not Logged In";
+            }
+        });
+
+        // Sign in the user. Prefer custom token, fall back to anonymous.
+        async function authenticateUser() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                    console.log('Signed in with custom token.');
+                } else {
+                    await signInAnonymously(auth);
+                    console.log('Signed in anonymously.');
+                }
+            } catch (error) {
+                console.error("Authentication Error:", error);
+                statusMessage.textContent = "Authentication failed.";
+                userIdDisplay.textContent = "Auth Error";
+            }
+        }
+        
+        // --- 4. CORE APPLICATION LOGIC ---
+
+        /**
+         * Handles the check-in process when the button is clicked.
+         */
+        async function handleCheckIn() {
+            if (!authReady || !currentUserId) {
+                statusMessage.textContent = 'Please wait, initializing user session...';
+                return;
+            }
+
+            checkInButton.disabled = true;
+            statusMessage.textContent = 'Getting your location...';
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    statusMessage.textContent = 'Location found! Saving record...';
+                    const { latitude, longitude } = position.coords;
+
+                    const now = new Date();
+                    const attendanceRecord = {
+                        userId: currentUserId,
+                        timestamp: now,
+                        location: {
+                            latitude: latitude,
+                            longitude: longitude
+                        },
+                        fullDate: now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+                        day: now.toLocaleDateString('en-US', { weekday: 'long' }),
+                        time: now.toLocaleTimeString('en-US'),
+                    };
+                    
+                    try {
+                        // Save the record to a user-specific collection
+                        const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/attendance`), attendanceRecord);
+                        console.log("Document written with ID: ", docRef.id);
+                        statusMessage.textContent = '✅ Check-in successful!';
+                    } catch (e) {
+                        console.error("Error adding document: ", e);
+                        statusMessage.textContent = 'Error saving record.';
+                    } finally {
+                        setTimeout(() => {
+                           statusMessage.textContent = '';
+                           checkInButton.disabled = false;
+                        }, 3000);
+                    }
+                },
+                (error) => {
+                    console.error("Geolocation Error:", error.message);
+                    let errorMessage = 'Geolocation error.';
+                    if (error.code === 1) errorMessage = 'Please allow location access.';
+                    if (error.code === 2) errorMessage = 'Location position unavailable.';
+                    statusMessage.textContent = `❌ ${errorMessage}`;
+                    checkInButton.disabled = false;
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+        
+        /**
+         * Sets up a real-time listener for the user's attendance records in Firestore.
+         */
+        function listenForAttendanceChanges() {
+            if (!currentUserId) return;
+            
+            const attendanceCollectionRef = collection(db, `artifacts/${appId}/users/${currentUserId}/attendance`);
+            const q = query(attendanceCollectionRef);
+
+            onSnapshot(q, (querySnapshot) => {
+                const records = [];
+                querySnapshot.forEach((doc) => {
+                    records.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort records by timestamp, newest first
+                records.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                
+                attendanceDataCache = records; // Update cache for CSV export
+                renderAttendanceHistory(records);
+            }, (error) => {
+                console.error("Error listening to snapshots: ", error);
+                statusMessage.textContent = "Could not fetch history.";
+                historyLoader.style.display = 'none';
+            });
+        }
+
+        /**
+         * Renders the list of attendance records to the UI.
+         * @param {Array} records - An array of attendance record objects.
+         */
+        function renderAttendanceHistory(records) {
+            historyLoader.style.display = 'none';
+            historyList.innerHTML = ''; // Clear existing list
+            
+            exportCsvButton.disabled = records.length === 0;
+
+            if (records.length === 0) {
+                historyList.innerHTML = `<li class="text-center text-slate-500 p-6">No attendance records found.</li>`;
+                return;
+            }
+
+            records.forEach(record => {
+                const listItem = document.createElement('li');
+                listItem.className = 'p-4 hover:bg-slate-100 transition-colors';
+
+                const locationText = `Lat: ${record.location.latitude.toFixed(4)}, Lon: ${record.location.longitude.toFixed(4)}`;
+
+                listItem.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-slate-800">${record.fullDate}</p>
+                            <p class="text-sm text-indigo-600">${record.day} at ${record.time}</p>
+                        </div>
+                        <div class="text-right">
+                             <p class="text-xs text-slate-500">${locationText}</p>
+                        </div>
+                    </div>
+                `;
+                historyList.appendChild(listItem);
+            });
+        }
+
+        /**
+         * Converts attendance data to a CSV string and triggers a download.
+         */
+        function exportToCSV() {
+            if (attendanceDataCache.length === 0) {
+                alert("No data to export.");
+                return;
+            }
+
+            // Define CSV Headers
+            const headers = ['User ID', 'Full Date', 'Day', 'Time', 'Latitude', 'Longitude'];
+            
+            // Map data to CSV rows
+            const csvRows = attendanceDataCache.map(record => {
+                const row = [
+                    record.userId,
+                    `"${record.fullDate}"`, // Enclose in quotes to handle commas in date
+                    record.day,
+                    record.time,
+                    record.location.latitude,
+                    record.location.longitude
+                ];
+                return row.join(',');
+            });
+
+            // Combine headers and rows
+            const csvString = [headers.join(','), ...csvRows].join('\n');
+            
+            // Create a Blob and trigger download
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.href) {
+                URL.revokeObjectURL(link.href);
+            }
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.setAttribute('download', 'attendance_export.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        /**
+         * Updates the real-time clock and date display every second.
+         */
+        function updateClock() {
+            const now = new Date();
+            timeDisplay.textContent = now.toLocaleTimeString('en-US');
+            dateDisplay.textContent = `${now.toLocaleDateString('en-US', { weekday: 'long' })}, ${now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+        }
+
+
+        // --- 5. INITIALIZATION AND EVENT LISTENERS ---
+        window.onload = function() {
+            authenticateUser();
+            checkInButton.addEventListener('click', handleCheckIn);
+            exportCsvButton.addEventListener('click', exportToCSV);
+            setInterval(updateClock, 1000);
+            updateClock(); // Initial call to display time immediately
+        };
+
+    </script>
+</body>
+</html>
