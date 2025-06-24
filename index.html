@@ -23,6 +23,10 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        /* Added style for configuration warning */
+        #config-warning {
+            display: none; /* Hidden by default */
+        }
     </style>
 </head>
 <body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
@@ -34,6 +38,12 @@
         <div class="text-center">
             <h1 class="text-2xl md:text-3xl font-bold text-slate-800">Employee Attendance</h1>
             <p class="text-slate-500 mt-1">Check in to record your attendance</p>
+        </div>
+        
+        <!-- Configuration Warning -->
+        <div id="config-warning" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md" role="alert">
+            <p class="font-bold">Configuration Needed</p>
+            <p>This application is not configured. Please set up your Firebase credentials in the HTML file to enable functionality.</p>
         </div>
 
         <!-- Real-time Clock and Date -->
@@ -82,27 +92,22 @@
     <script type="module">
         // Import necessary functions from Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, onSnapshot, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- 1. CONFIGURATION AND INITIALIZATION ---
         
-        // Use predefined Firebase config and App ID from the environment
+        // IMPORTANT: Replace this placeholder with your own Firebase project configuration.
+        // You can get this from the Firebase Console: Project settings > General > Your apps > SDK setup and configuration
         const firebaseConfig = {
-  apiKey: "AIzaSyBURL-nmWv5IiGg324sUnIeQgXYGo0VKfU",
-  authDomain: "rn-attendance-1.firebaseapp.com",
-  projectId: "rn-attendance-1",
-  storageBucket: "rn-attendance-1.firebasestorage.app",
-  messagingSenderId: "996441307013",
-  appId: "1:996441307013:web:40045ba19a91104bf776ec",
-  measurementId: "G-Z1FXYM0D5T"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const db = getFirestore(app);
-
+          apiKey: "", // <-- PASTE YOUR API KEY HERE
+          authDomain: "", // <-- PASTE YOUR AUTH DOMAIN HERE
+          projectId: "", // <-- PASTE YOUR PROJECT ID HERE
+          storageBucket: "", // <-- PASTE YOUR STORAGE BUCKET HERE
+          messagingSenderId: "", // <-- PASTE YOUR MESSAGING SENDER ID HERE
+          appId: "" // <-- PASTE YOUR APP ID HERE
+        };
+        
         // --- 2. UI ELEMENT REFERENCES ---
         const checkInButton = document.getElementById('check-in-btn');
         const exportCsvButton = document.getElementById('export-csv-btn');
@@ -112,37 +117,73 @@ const db = getFirestore(app);
         const userIdDisplay = document.getElementById('user-id-display');
         const timeDisplay = document.getElementById('current-time');
         const dateDisplay = document.getElementById('current-date');
+        const configWarning = document.getElementById('config-warning');
 
         let currentUserId = null;
         let authReady = false;
+        let db;
+        let auth;
         let attendanceDataCache = []; // Cache for storing attendance data for CSV export
 
-        // --- 3. AUTHENTICATION ---
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // User is signed in.
-                currentUserId = user.uid;
-                authReady = true;
-                userIdDisplay.textContent = currentUserId;
-                console.log("User authenticated with UID:", currentUserId);
-                listenForAttendanceChanges();
-            } else {
-                // User is signed out. Handle this case if necessary.
-                console.log("User is not authenticated.");
-                userIdDisplay.textContent = "Not Logged In";
+        /**
+         * Initializes the application, Firebase, and event listeners.
+         */
+        function initApp() {
+            // Check if Firebase config is still a placeholder
+            if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+                configWarning.style.display = 'block';
+                checkInButton.disabled = true;
+                userIdDisplay.textContent = 'Not Configured';
+                historyLoader.style.display = 'none';
+                historyList.innerHTML = `<li class="text-center text-slate-500 p-6">App not configured.</li>`;
+                console.error("Firebase configuration is missing. Please update the firebaseConfig object in your HTML.");
+                return; // Stop execution if not configured
             }
-        });
+            
+            // Initialize Firebase
+            try {
+                const app = initializeApp(firebaseConfig); // This is the call to the imported Firebase function
+                auth = getAuth(app);
+                db = getFirestore(app);
+                setupAuthListener();
+                authenticateUser();
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                configWarning.style.display = 'block';
+                configWarning.querySelector('p:last-child').textContent = 'Error initializing Firebase. Check your configuration and console for details.';
+            }
+        }
+        
+        // --- 3. AUTHENTICATION ---
+        /**
+         * Sets up a listener for authentication state changes.
+         */
+        function setupAuthListener() {
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    // User is signed in.
+                    currentUserId = user.uid;
+                    authReady = true;
+                    userIdDisplay.textContent = currentUserId;
+                    console.log("User authenticated with UID:", currentUserId);
+                    listenForAttendanceChanges();
+                } else {
+                    // User is signed out.
+                    authReady = false;
+                    currentUserId = null;
+                    console.log("User is not authenticated.");
+                    userIdDisplay.textContent = "Not Logged In";
+                }
+            });
+        }
 
-        // Sign in the user. Prefer custom token, fall back to anonymous.
+        /**
+         * Signs the user in anonymously.
+         */
         async function authenticateUser() {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                    console.log('Signed in with custom token.');
-                } else {
-                    await signInAnonymously(auth);
-                    console.log('Signed in anonymously.');
-                }
+                await signInAnonymously(auth);
+                console.log('Signed in anonymously.');
             } catch (error) {
                 console.error("Authentication Error:", error);
                 statusMessage.textContent = "Authentication failed.";
@@ -168,28 +209,23 @@ const db = getFirestore(app);
                 async (position) => {
                     statusMessage.textContent = 'Location found! Saving record...';
                     const { latitude, longitude } = position.coords;
-
                     const now = new Date();
                     const attendanceRecord = {
                         userId: currentUserId,
                         timestamp: now,
-                        location: {
-                            latitude: latitude,
-                            longitude: longitude
-                        },
+                        location: { latitude, longitude },
                         fullDate: now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
                         day: now.toLocaleDateString('en-US', { weekday: 'long' }),
                         time: now.toLocaleTimeString('en-US'),
                     };
                     
                     try {
-                        // Save the record to a user-specific collection
-                        const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/attendance`), attendanceRecord);
-                        console.log("Document written with ID: ", docRef.id);
+                        const attendanceCollectionPath = `artifacts/${firebaseConfig.projectId}/users/${currentUserId}/attendance`;
+                        await addDoc(collection(db, attendanceCollectionPath), attendanceRecord);
                         statusMessage.textContent = '✅ Check-in successful!';
                     } catch (e) {
                         console.error("Error adding document: ", e);
-                        statusMessage.textContent = 'Error saving record.';
+                        statusMessage.textContent = 'Error saving record. Check console.';
                     } finally {
                         setTimeout(() => {
                            statusMessage.textContent = '';
@@ -215,8 +251,8 @@ const db = getFirestore(app);
         function listenForAttendanceChanges() {
             if (!currentUserId) return;
             
-            const attendanceCollectionRef = collection(db, `artifacts/${appId}/users/${currentUserId}/attendance`);
-            const q = query(attendanceCollectionRef);
+            const attendanceCollectionPath = `artifacts/${firebaseConfig.projectId}/users/${currentUserId}/attendance`;
+            const q = query(collection(db, attendanceCollectionPath));
 
             onSnapshot(q, (querySnapshot) => {
                 const records = [];
@@ -224,26 +260,23 @@ const db = getFirestore(app);
                     records.push({ id: doc.id, ...doc.data() });
                 });
                 
-                // Sort records by timestamp, newest first
                 records.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
                 
-                attendanceDataCache = records; // Update cache for CSV export
+                attendanceDataCache = records;
                 renderAttendanceHistory(records);
             }, (error) => {
                 console.error("Error listening to snapshots: ", error);
-                statusMessage.textContent = "Could not fetch history.";
+                statusMessage.textContent = "Could not fetch history. Check console.";
                 historyLoader.style.display = 'none';
             });
         }
 
         /**
          * Renders the list of attendance records to the UI.
-         * @param {Array} records - An array of attendance record objects.
          */
         function renderAttendanceHistory(records) {
             historyLoader.style.display = 'none';
-            historyList.innerHTML = ''; // Clear existing list
-            
+            historyList.innerHTML = '';
             exportCsvButton.disabled = records.length === 0;
 
             if (records.length === 0) {
@@ -254,7 +287,6 @@ const db = getFirestore(app);
             records.forEach(record => {
                 const listItem = document.createElement('li');
                 listItem.className = 'p-4 hover:bg-slate-100 transition-colors';
-
                 const locationText = `Lat: ${record.location.latitude.toFixed(4)}, Lon: ${record.location.longitude.toFixed(4)}`;
 
                 listItem.innerHTML = `
@@ -277,35 +309,23 @@ const db = getFirestore(app);
          */
         function exportToCSV() {
             if (attendanceDataCache.length === 0) {
-                alert("No data to export.");
+                statusMessage.textContent = 'No data available to export.';
+                setTimeout(() => statusMessage.textContent = '', 3000);
                 return;
             }
 
-            // Define CSV Headers
             const headers = ['User ID', 'Full Date', 'Day', 'Time', 'Latitude', 'Longitude'];
-            
-            // Map data to CSV rows
             const csvRows = attendanceDataCache.map(record => {
                 const row = [
-                    record.userId,
-                    `"${record.fullDate}"`, // Enclose in quotes to handle commas in date
-                    record.day,
-                    record.time,
-                    record.location.latitude,
-                    record.location.longitude
+                    record.userId, `"${record.fullDate}"`, record.day, record.time,
+                    record.location.latitude, record.location.longitude
                 ];
                 return row.join(',');
             });
 
-            // Combine headers and rows
             const csvString = [headers.join(','), ...csvRows].join('\n');
-            
-            // Create a Blob and trigger download
             const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
-            if (link.href) {
-                URL.revokeObjectURL(link.href);
-            }
             const url = URL.createObjectURL(blob);
             link.href = url;
             link.setAttribute('download', 'attendance_export.csv');
@@ -323,14 +343,13 @@ const db = getFirestore(app);
             dateDisplay.textContent = `${now.toLocaleDateString('en-US', { weekday: 'long' })}, ${now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
         }
 
-
         // --- 5. INITIALIZATION AND EVENT LISTENERS ---
         window.onload = function() {
-            authenticateUser();
+            initApp(); // Changed to call the renamed function
             checkInButton.addEventListener('click', handleCheckIn);
             exportCsvButton.addEventListener('click', exportToCSV);
             setInterval(updateClock, 1000);
-            updateClock(); // Initial call to display time immediately
+            updateClock();
         };
 
     </script>
