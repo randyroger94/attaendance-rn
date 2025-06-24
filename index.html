@@ -91,22 +91,22 @@
     <!-- Firebase SDK -->
     <script type="module">
         // Import necessary functions from Firebase SDKs
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
 
         // --- 1. CONFIGURATION AND INITIALIZATION ---
         
         // IMPORTANT: Replace this placeholder with your own Firebase project configuration.
         // You can get this from the Firebase Console: Project settings > General > Your apps > SDK setup and configuration
         const firebaseConfig = {
-          apiKey: "", // <-- PASTE YOUR API KEY HERE
-          authDomain: "", // <-- PASTE YOUR AUTH DOMAIN HERE
-          projectId: "", // <-- PASTE YOUR PROJECT ID HERE
-          storageBucket: "", // <-- PASTE YOUR STORAGE BUCKET HERE
-          messagingSenderId: "", // <-- PASTE YOUR MESSAGING SENDER ID HERE
-          appId: "" // <-- PASTE YOUR APP ID HERE
-        };
+  apiKey: "AIzaSyA8rjZFZsEVbgPgmgDHHzs8eMjRwZUawT0",
+  authDomain: "project-3-9ffa3.firebaseapp.com",
+  projectId: "project-3-9ffa3",
+  storageBucket: "project-3-9ffa3.firebasestorage.app",
+  messagingSenderId: "87702945223",
+  appId: "1:87702945223:web:83cb32db266ae776082de2",
+  measurementId: "G-S2S749NR90"
+};
         
         // --- 2. UI ELEMENT REFERENCES ---
         const checkInButton = document.getElementById('check-in-btn');
